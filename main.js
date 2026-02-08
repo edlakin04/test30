@@ -1,7 +1,11 @@
-// TrackedX Prototype (static)
-// - Hash-router pages: #/filtered, #/verified, #/how
-// - Fake DexScreener-like streams + "seconds ago"
-// - Phantom wallet connect + signMessage (demo fallback)
+// LaunchDetect UI
+// - Phantom connect wallet button (real connection only)
+// - Shows wallet + SOL balance
+// - Tabs below info (Filtered / Verified)
+// - How it works page with back button
+// - Meme-ish token generator + streaming updates
+// - Dev column uses wallet addresses (shortened)
+// - Row includes small "Track coin data" button
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -10,28 +14,44 @@ const UI = {
   listRoot: $("#listRoot"),
   searchInput: $("#searchInput"),
   btnRefresh: $("#btnRefresh"),
-  navLinks: Array.from(document.querySelectorAll(".navlink")),
-  toast: $("#toast"),
+
+  tabsWrap: $("#tabs"),
+  tabs: Array.from(document.querySelectorAll(".tab")),
 
   btnConnect: $("#btnConnect"),
-  btnSign: $("#btnSign"),
+  btnConnectInline: $("#btnConnectInline"),
   walletAddr: $("#walletAddr"),
+  walletLabel: $("#walletLabel"),
   statusDot: $("#statusDot"),
+
+  tradeNotice: $("#tradeNotice"),
 
   statFiltered: $("#statFiltered"),
   statHidden: $("#statHidden"),
   statVerified: $("#statVerified"),
+
+  howRoot: $("#howRoot"),
+  btnBack: $("#btnBack"),
+
+  toast: $("#toast"),
 };
 
-const STORAGE_KEY = "trackedx_state_v1";
+const STORAGE_KEY = "launchdetect_state_v2";
+
+// You can change this to devnet if you want for testing:
+// const SOLANA_RPC = "https://api.devnet.solana.com";
+const SOLANA_RPC = "https://api.mainnet-beta.solana.com";
 
 const state = {
-  route: "filtered",
+  route: "home", // home | how
+  view: "filtered", // filtered | verified
+
   wallet: {
     connected: false,
     address: null,
-    provider: "none", // phantom | demo
+    solBalance: null,
   },
+
   filtered: {
     items: [],
     hiddenCount: 0,
@@ -61,8 +81,14 @@ function pick(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+function toast(msg) {
+  UI.toast.textContent = msg;
+  UI.toast.classList.add("show");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => UI.toast.classList.remove("show"), 2200);
+}
+
 function formatCompactUSD(num) {
-  // num is dollars
   if (num >= 1_000_000_000) return `$${(num / 1_000_000_000).toFixed(2)}B`;
   if (num >= 1_000_000) return `$${(num / 1_000_000).toFixed(2)}M`;
   if (num >= 1_000) return `$${(num / 1_000).toFixed(1)}K`;
@@ -86,45 +112,175 @@ function relTimeFrom(tsMs) {
   return `${d}d ago`;
 }
 
-function toast(msg) {
-  UI.toast.textContent = msg;
-  UI.toast.classList.add("show");
-  clearTimeout(toast._t);
-  toast._t = setTimeout(() => UI.toast.classList.remove("show"), 2200);
+/* ------------------------- Wallet (Phantom) ------------------------- */
+
+function getPhantomProvider() {
+  const sol = window?.solana;
+  if (sol && sol.isPhantom) return sol;
+  return null;
 }
 
-/* ------------------------- Fake Data Generation ------------------------- */
+async function connectWallet() {
+  const provider = getPhantomProvider();
+  if (!provider) {
+    toast("Phantom not found. Install Phantom to connect.");
+    return;
+  }
 
-const WORDS = [
-  "Nebula","Kite","Mango","Raptor","Quartz","Ripple","Nova","Vanta","Cobalt","Atlas","Pixel","Lumen",
-  "Cinder","Orbit","Saffron","Panda","Kraken","Sonic","Glacier","Drift","Cipher","Echo","Fable","Vortex",
-  "Rune","Basil","Comet","Zebra","Bunker","Pulse","Chroma","Tango","Warden","Ion","Karma","Lyra",
+  try {
+    const resp = await provider.connect();
+    const pubkey =
+      resp?.publicKey?.toString?.() ||
+      provider.publicKey?.toString?.();
+
+    if (!pubkey) throw new Error("No public key");
+
+    state.wallet.connected = true;
+    state.wallet.address = pubkey;
+    state.wallet.solBalance = null;
+
+    saveState();
+    syncWalletUI();
+    toast("Wallet connected");
+
+    await refreshBalance();
+  } catch (e) {
+    toast("Connection cancelled");
+  }
+}
+
+async function disconnectWallet() {
+  const provider = getPhantomProvider();
+  try {
+    if (provider?.disconnect) await provider.disconnect();
+  } catch {
+    // ignore
+  }
+  state.wallet.connected = false;
+  state.wallet.address = null;
+  state.wallet.solBalance = null;
+  saveState();
+  syncWalletUI();
+}
+
+async function rpc(method, params) {
+  const res = await fetch(SOLANA_RPC, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method,
+      params,
+    }),
+  });
+  if (!res.ok) throw new Error("RPC failed");
+  const json = await res.json();
+  if (json.error) throw new Error(json.error.message || "RPC error");
+  return json.result;
+}
+
+async function refreshBalance() {
+  if (!state.wallet.connected || !state.wallet.address) return;
+  try {
+    const result = await rpc("getBalance", [state.wallet.address]);
+    const lamports = result?.value ?? 0;
+    const sol = lamports / 1_000_000_000;
+    state.wallet.solBalance = sol;
+    saveState();
+    syncWalletUI();
+  } catch {
+    // Don't spam toast for transient RPC issues
+    state.wallet.solBalance = null;
+    saveState();
+    syncWalletUI();
+  }
+}
+
+function syncWalletUI() {
+  const connected = state.wallet.connected && !!state.wallet.address;
+
+  UI.statusDot.classList.toggle("on", connected);
+
+  if (!connected) {
+    UI.walletLabel.textContent = "Wallet";
+    UI.walletAddr.textContent = "Not connected";
+    UI.btnConnect.textContent = "Connect Wallet";
+    UI.btnConnect.onclick = connectWallet;
+
+    UI.tradeNotice.hidden = false;
+    UI.btnConnectInline.onclick = connectWallet;
+    return;
+  }
+
+  const bal =
+    typeof state.wallet.solBalance === "number"
+      ? `${state.wallet.solBalance.toFixed(3)} SOL`
+      : "… SOL";
+
+  UI.walletLabel.textContent = "Wallet • Balance";
+  UI.walletAddr.textContent = `${shortAddr(state.wallet.address)} • ${bal}`;
+  UI.btnConnect.textContent = "Connected";
+  // allow click to disconnect (handy for dev testing)
+  UI.btnConnect.onclick = disconnectWallet;
+
+  UI.tradeNotice.hidden = true;
+}
+
+/* ------------------------- Routing ------------------------- */
+
+function parseRoute() {
+  const hash = location.hash || "#/";
+  const route = hash.replace("#/", "").split("?")[0];
+  if (route === "how") return { route: "how" };
+  return { route: "home" };
+}
+
+function setRoute(r) {
+  state.route = r;
+  saveState();
+  render();
+}
+
+window.addEventListener("hashchange", () => {
+  const r = parseRoute();
+  setRoute(r.route);
+});
+
+/* ------------------------- Fake Data (meme-ish) ------------------------- */
+
+const MEME_A = [
+  "Bonk","Wif","Pepe","Doge","Bobo","Chad","Giga","Frog","Blob","Nyan","Shrek","Yeti",
+  "Mog","Rizz","Skibidi","Degen","Ape","Pog","Goon","Goblin","Worm","Toad","Beanz","Snek",
+  "Oink","Zonk","Womp","Blep","Zaza","Yeet","Coom","Kek","Bingus","Zorple","Glorp","Sploink",
 ];
 
-const SUFFIX = ["Coin","Token","Protocol","AI","Swap","Fi","Labs","Dex","X","Cash","Pad","Guard"];
-
-const SYMBOLS = [
-  "NEB","KITE","MNGO","RAPT","QRTZ","RIPL","NOVA","VANT","COB","ATLS","PIXL","LUMN",
-  "CNDR","ORBT","SFRN","PNDA","KRKN","SONC","GLCR","DRFT","CPHR","ECHO","FABL","VRTX",
-  "RUNE","BASL","COMT","ZBRA","BNKR","PULS","CHRM","TNGO","WRDN","ION","KARM","LYRA",
+const MEME_B = [
+  "inator","Coin","Token","Wagon","Goonz","Factory","Empire","Blaster","Turbo","Deluxe","Ultra","Prime",
+  "3000","Max","Flip","RugStop","Moon","Nuke","Sauce","Fren","Meme","Pouch","Drip","Tape","Punch",
+  "Fi","X","Wave","Club","Gang","Stack","Slam","Giga","Goblins","Soup","Bonsai","Shrimp",
 ];
 
-function makeTokenName() {
-  const a = pick(WORDS);
-  const b = Math.random() < 0.55 ? ` ${pick(SUFFIX)}` : "";
-  return `${a}${b}`.trim();
+const SYMBOL_POOL = [
+  "BONK","WIF","PEPE","DOGE","BOBO","CHAD","GIGA","RIZZ","MOG","SNEK","BING","ZAZA","YEET","KEK",
+  "GLORP","SPLO","BLOB","TOAD","WORM","GOON","P0G","NYAN","SHRK","YETI","OINK","ZONK","WOMP",
+];
+
+function makeMemeName() {
+  // Heavily meme leaning: A + B with occasional weird spacing
+  const a = pick(MEME_A);
+  const b = pick(MEME_B);
+  const join = Math.random() < 0.25 ? " " : "";
+  return `${a}${join}${b}`.replace(/\s+/g, " ").trim();
 }
 
 function makeSymbol() {
-  // Sometimes create meme-ish short ones
-  if (Math.random() < 0.25) {
-    const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    const len = randInt(3, 5);
-    let s = "";
-    for (let i = 0; i < len; i++) s += letters[randInt(0, letters.length - 1)];
-    return s;
-  }
-  return pick(SYMBOLS);
+  if (Math.random() < 0.7) return pick(SYMBOL_POOL);
+  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const len = randInt(3, 5);
+  let s = "";
+  for (let i = 0; i < len; i++) s += letters[randInt(0, letters.length - 1)];
+  return s;
 }
 
 function base58Random(len = 44) {
@@ -134,56 +290,39 @@ function base58Random(len = 44) {
   return out;
 }
 
-function makeDevHandle() {
-  const prefixes = ["dev", "labs", "team", "build", "alpha", "core", "mint", "node", "vault", "orbit"];
-  const mid = ["x", "rx", "neo", "byte", "sol", "cap", "pulse", "grid", "nova", "zen"];
-  const n = randInt(10, 9999);
-  return `${pick(prefixes)}_${pick(mid)}${n}`;
+function cryptoRandomId() {
+  return Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2);
 }
 
 function makeRiskBadge(isVerifiedPage = false) {
-  // Verified developers page should look "safer" overall
   const r = Math.random();
   if (isVerifiedPage) {
-    if (r < 0.78) return { kind: "ok", label: "Verified" };
+    if (r < 0.82) return { kind: "ok", label: "Verified" };
     if (r < 0.95) return { kind: "warn", label: "Watch" };
     return { kind: "danger", label: "Flag" };
   }
-  // Filtered tokens page: more mixed
-  if (r < 0.60) return { kind: "ok", label: "Pass" };
+  if (r < 0.62) return { kind: "ok", label: "Pass" };
   if (r < 0.88) return { kind: "warn", label: "Caution" };
   return { kind: "danger", label: "Flag" };
 }
 
 function genToken({ ageMode = "mixed" } = {}) {
-  // Market cap: newer ones start around 8k, older can be up to 1.3m
-  const isNew = ageMode === "new" ? true : ageMode === "old" ? false : Math.random() < 0.45;
+  const isNew =
+    ageMode === "new" ? true :
+    ageMode === "old" ? false :
+    Math.random() < 0.45;
 
-  const cap = isNew
-    ? randFloat(8_000, 45_000)
-    : randFloat(45_000, 1_300_000);
-
-  // liquidity ~ 6% to 22% of cap, typical-ish for small tokens
+  const cap = isNew ? randFloat(8_000, 45_000) : randFloat(45_000, 1_300_000);
   const liq = cap * randFloat(0.06, 0.22);
-
-  // volume: 0.2x to 2.8x liquidity
   const vol = liq * randFloat(0.2, 2.8);
-
-  // txns: scaled loosely with vol
   const txns = Math.round(clamp(vol / randFloat(80, 220), 12, 4200));
 
-  // age: new = seconds/minutes; old = hours/days
   let listedAt = nowMs();
-  if (isNew) {
-    listedAt -= randInt(5, 110) * 1000;
-  } else {
-    // between 10 minutes and 3 days
-    listedAt -= randInt(10 * 60, 3 * 24 * 60 * 60) * 1000;
-  }
+  if (isNew) listedAt -= randInt(5, 110) * 1000;
+  else listedAt -= randInt(10 * 60, 3 * 24 * 60 * 60) * 1000;
 
-  const name = makeTokenName();
+  const name = makeMemeName();
   const sym = makeSymbol();
-  const dev = makeDevHandle();
 
   return {
     id: cryptoRandomId(),
@@ -193,31 +332,25 @@ function genToken({ ageMode = "mixed" } = {}) {
     liquidity: liq,
     volume24h: vol,
     txns,
-    dev,
+    devWallet: base58Random(44),
     listedAt,
     contract: base58Random(44),
   };
 }
 
-function genVerifiedDev() {
-  // Verified dev "profile" represented as a "project" row in same table layout
-  const project = genToken({ ageMode: "old" });
-  // Make it look more established
-  project.marketCap = randFloat(120_000, 2_200_000);
-  project.liquidity = project.marketCap * randFloat(0.10, 0.28);
-  project.volume24h = project.liquidity * randFloat(0.15, 1.8);
-  project.txns = Math.round(clamp(project.volume24h / randFloat(120, 260), 30, 5500));
-  project.listedAt = nowMs() - randInt(30 * 60, 7 * 24 * 60 * 60) * 1000; // 30min .. 7d
-  project.dev = `@${makeDevHandle()}`;
-  return project;
+function genVerifiedEntry() {
+  const t = genToken({ ageMode: "old" });
+  t.marketCap = randFloat(120_000, 2_200_000);
+  t.liquidity = t.marketCap * randFloat(0.10, 0.28);
+  t.volume24h = t.liquidity * randFloat(0.15, 1.8);
+  t.txns = Math.round(clamp(t.volume24h / randFloat(120, 260), 30, 5500));
+  t.listedAt = nowMs() - randInt(30 * 60, 7 * 24 * 60 * 60) * 1000;
+  // Verified dev "identity" as a wallet
+  t.devWallet = base58Random(44);
+  return t;
 }
 
-function cryptoRandomId() {
-  // Small stable id
-  return Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2);
-}
-
-/* ------------------------------ Persistence ----------------------------- */
+/* ------------------------- Persistence ------------------------- */
 
 function loadState() {
   try {
@@ -225,7 +358,9 @@ function loadState() {
     if (!raw) return;
     const parsed = JSON.parse(raw);
 
-    // shallow merge with current shape
+    if (parsed?.route) state.route = parsed.route;
+    if (parsed?.view) state.view = parsed.view;
+
     if (parsed?.wallet) state.wallet = { ...state.wallet, ...parsed.wallet };
     if (parsed?.filtered) state.filtered = { ...state.filtered, ...parsed.filtered };
     if (parsed?.verified) state.verified = { ...state.verified, ...parsed.verified };
@@ -242,87 +377,62 @@ function saveState() {
   }
 }
 
-/* ------------------------------ Rendering ------------------------------ */
+/* ------------------------- Rendering ------------------------- */
 
 function badgeHtml(b) {
   return `<span class="badge ${b.kind}">${b.label}</span>`;
 }
 
-function rowHtml(item, pageKind) {
-  const badge = makeRiskBadge(pageKind === "verified");
-  const devLabel = pageKind === "verified" ? item.dev : `@${item.dev}`;
+function trackLink(item) {
+  // placeholder link (you can wire to internal token page later)
+  const href = `#/?token=${encodeURIComponent(item.contract)}`;
+  return `<a class="track-link" href="${href}" title="Track coin data">Track coin data</a>`;
+}
+
+function rowHtml(item, viewKind) {
+  const badge = makeRiskBadge(viewKind === "verified");
   const listed = relTimeFrom(item.listedAt);
+  const devShort = shortAddr(item.devWallet);
 
   return `
     <div class="row" data-id="${item.id}">
       <div class="cell">
         <div class="token">
-          <div class="avatar"></div>
-          <div class="tmeta">
-            <div class="sym">${item.symbol} <span style="margin-left:8px;">${badgeHtml(badge)}</span></div>
-            <div class="name">${item.name} • ${shortAddr(item.contract)}</div>
-          </div>
+          <div class="sym">${item.symbol} <span style="margin-left:8px;">${badgeHtml(badge)}</span></div>
+          <div class="name">${item.name} • ${shortAddr(item.contract)}</div>
         </div>
       </div>
       <div class="cell">${formatCompactUSD(item.marketCap)}</div>
       <div class="cell">${formatCompactUSD(item.liquidity)}</div>
       <div class="cell">${formatCompactUSD(item.volume24h)}</div>
       <div class="cell">${item.txns.toLocaleString()}</div>
-      <div class="cell">${devLabel}</div>
+      <div class="cell">${devShort}</div>
       <div class="cell" data-rel="1">${listed}</div>
+      <div class="cell">${trackLink(item)}</div>
     </div>
   `;
 }
 
-function renderNavActive() {
-  UI.navLinks.forEach((a) => {
-    const href = a.getAttribute("href");
-    const route = (href || "").replace("#/", "");
-    a.classList.toggle("active", route === state.route);
-  });
-}
-
 function currentDataset() {
-  if (state.route === "verified") return state.verified.items;
-  if (state.route === "how") return [];
-  return state.filtered.items; // default filtered
+  return state.view === "verified" ? state.verified.items : state.filtered.items;
 }
 
-function renderPage() {
-  renderNavActive();
+function renderTabs() {
+  UI.tabs.forEach((btn) => {
+    const r = btn.getAttribute("data-route");
+    btn.classList.toggle("active", r === state.view);
+  });
 
-  if (state.route === "how") {
-    UI.pageTitle.textContent = "How it works";
-    UI.searchInput.value = "";
-    UI.searchInput.disabled = true;
-    UI.btnRefresh.disabled = true;
+  UI.pageTitle.textContent =
+    state.view === "verified" ? "Verified Developers" : "Filtered Developers";
+}
 
-    UI.listRoot.innerHTML = `
-      <div style="padding:16px;">
-        <div class="card glass" style="padding:16px; border:1px solid rgba(255,255,255,.08);">
-          <div style="font-weight:950; letter-spacing:.2px; font-size:15px;">Coming soon</div>
-          <p class="muted" style="margin:10px 0 0; line-height:1.55;">
-            You’ll add the real explanation later. For now, this prototype simulates:
-            deploy scan → liquidity review → behavior watch → listing.
-          </p>
-          <div class="divider" style="margin:14px 0;"></div>
-          <div class="muted" style="font-size:12px;">
-            Tip: You can make this page a step-by-step storyboard with screenshots, audit checklist, and “why we blocked it” examples.
-          </div>
-        </div>
-      </div>
-    `;
-    return;
-  }
+function renderHome() {
+  UI.howRoot.hidden = true;
+  document.querySelector(".page").hidden = false;
 
-  UI.searchInput.disabled = false;
-  UI.btnRefresh.disabled = false;
-
-  if (state.route === "verified") {
-    UI.pageTitle.textContent = "Verified Developers";
-  } else {
-    UI.pageTitle.textContent = "Filtered Developers";
-  }
+  renderTabs();
+  syncWalletUI();
 
   const q = (UI.searchInput.value || "").trim().toLowerCase();
   const items = currentDataset();
@@ -330,21 +440,28 @@ function renderPage() {
   const filtered = !q
     ? items
     : items.filter((x) => {
-        const dev = String(x.dev || "").toLowerCase();
         return (
           String(x.symbol).toLowerCase().includes(q) ||
           String(x.name).toLowerCase().includes(q) ||
-          dev.includes(q)
+          String(x.devWallet).toLowerCase().includes(q)
         );
       });
 
-  UI.listRoot.innerHTML = filtered.map((item) => rowHtml(item, state.route)).join("");
-
+  UI.listRoot.innerHTML = filtered.map((item) => rowHtml(item, state.view)).join("");
   updateStats();
 }
 
+function renderHow() {
+  document.querySelector(".page").hidden = true;
+  UI.howRoot.hidden = false;
+}
+
+function render() {
+  if (state.route === "how") renderHow();
+  else renderHome();
+}
+
 function updateRelTimes() {
-  // Update "Listed" column live without re-rendering whole list
   const nodes = UI.listRoot.querySelectorAll('[data-rel="1"]');
   nodes.forEach((n) => {
     const row = n.closest(".row");
@@ -354,8 +471,8 @@ function updateRelTimes() {
     const item =
       state.filtered.items.find((x) => x.id === id) ||
       state.verified.items.find((x) => x.id === id);
-    if (!item) return;
 
+    if (!item) return;
     n.textContent = relTimeFrom(item.listedAt);
   });
 }
@@ -366,59 +483,35 @@ function updateStats() {
   UI.statVerified.textContent = state.verified.items.length.toLocaleString();
 }
 
-/* ------------------------------- Routing ------------------------------- */
-
-function parseRoute() {
-  const hash = location.hash || "#/filtered";
-  const route = hash.replace("#/", "").split("?")[0];
-  if (route === "verified" || route === "how" || route === "filtered") return route;
-  return "filtered";
-}
-
-function setRoute(r) {
-  state.route = r;
-  saveState();
-  renderPage();
-}
-
-window.addEventListener("hashchange", () => {
-  setRoute(parseRoute());
-});
-
-/* -------------------------- Initial Data Seeding ------------------------ */
+/* ------------------------- Initial Data Seeding ------------------------- */
 
 function seedAll() {
-  // 50 initial each
   state.filtered.items = [];
   state.verified.items = [];
-
-  // Hidden rugs counter just for vibe
   state.filtered.hiddenCount = randInt(80, 320);
 
   for (let i = 0; i < 50; i++) {
-    const ageMode = i < 14 ? "new" : "old";
+    const ageMode = i < 16 ? "new" : "old";
     state.filtered.items.push(genToken({ ageMode }));
   }
 
   for (let i = 0; i < 50; i++) {
-    state.verified.items.push(genVerifiedDev());
+    state.verified.items.push(genVerifiedEntry());
   }
 
-  // newest first like feeds
   state.filtered.items.sort((a, b) => b.listedAt - a.listedAt);
   state.verified.items.sort((a, b) => b.listedAt - a.listedAt);
 
   saveState();
 }
 
-/* ------------------------------ Live Feeds ------------------------------ */
+/* ------------------------- Live Streams ------------------------- */
 
 function scheduleFilteredStream() {
-  // New ones pop more frequently like DexScreener
   const loop = () => {
-    const delay = randInt(1800, 5200); // 1.8s..5.2s
+    const delay = randInt(1800, 5200);
     setTimeout(() => {
-      // Sometimes block a "rug" (not shown)
+      // Sometimes block a rug (not shown)
       if (Math.random() < 0.22) {
         state.filtered.hiddenCount += 1;
         updateStats();
@@ -428,11 +521,9 @@ function scheduleFilteredStream() {
 
       const item = genToken({ ageMode: "new" });
       state.filtered.items.unshift(item);
-
-      // cap list size so it doesn't grow forever
       state.filtered.items = state.filtered.items.slice(0, 300);
 
-      if (state.route === "filtered") renderPage();
+      if (state.route === "home" && state.view === "filtered") renderHome();
       else updateStats();
 
       loop();
@@ -442,15 +533,14 @@ function scheduleFilteredStream() {
 }
 
 function scheduleVerifiedStream() {
-  // Verified devs should be slower additions
   const loop = () => {
-    const delay = randInt(28_000, 65_000); // 28s..65s
+    const delay = randInt(28_000, 65_000);
     setTimeout(() => {
-      const item = genVerifiedDev();
+      const item = genVerifiedEntry();
       state.verified.items.unshift(item);
       state.verified.items = state.verified.items.slice(0, 250);
 
-      if (state.route === "verified") renderPage();
+      if (state.route === "home" && state.view === "verified") renderHome();
       else updateStats();
 
       loop();
@@ -459,119 +549,68 @@ function scheduleVerifiedStream() {
   loop();
 }
 
-/* -------------------------- Phantom Wallet Hooks ------------------------- */
+/* ------------------------- Events ------------------------- */
 
-function getPhantomProvider() {
-  const anyWindow = window;
-  const sol = anyWindow?.solana;
-  if (sol && sol.isPhantom) return sol;
-  return null;
-}
+UI.btnConnect.addEventListener("click", (e) => {
+  // Click handler is assigned dynamically in syncWalletUI (connect/disconnect)
+  // This keeps this listener harmless
+});
 
-async function connectWallet() {
-  const provider = getPhantomProvider();
-  if (provider) {
-    try {
-      const resp = await provider.connect();
-      const pubkey = resp?.publicKey?.toString?.() || provider.publicKey?.toString?.();
-      if (!pubkey) throw new Error("No public key returned");
-      state.wallet.connected = true;
-      state.wallet.address = pubkey;
-      state.wallet.provider = "phantom";
-      saveState();
-      syncWalletUI();
-      toast("Connected to Phantom");
-      return;
-    } catch (e) {
-      toast("Connect cancelled");
-      return;
-    }
-  }
-
-  // Demo fallback
-  state.wallet.connected = true;
-  state.wallet.address = base58Random(44);
-  state.wallet.provider = "demo";
-  saveState();
-  syncWalletUI();
-  toast("Phantom not found — using demo wallet");
-}
-
-async function signMessage() {
-  if (!state.wallet.connected) return;
-
-  const msg = `TrackedX prototype sign-in • ${new Date().toISOString()}`;
-  const provider = getPhantomProvider();
-
-  if (state.wallet.provider === "phantom" && provider) {
-    try {
-      const encoded = new TextEncoder().encode(msg);
-      const signed = await provider.signMessage(encoded, "utf8");
-      // We don't need to display signature; just confirm
-      if (!signed?.signature) {
-        toast("Signed (no signature returned)");
-      } else {
-        toast("Message signed");
-      }
-      return;
-    } catch {
-      toast("Signature cancelled");
-      return;
-    }
-  }
-
-  // Demo sign
-  toast("Demo signed message");
-}
-
-function syncWalletUI() {
-  if (state.wallet.connected && state.wallet.address) {
-    UI.walletAddr.textContent = shortAddr(state.wallet.address);
-    UI.statusDot.classList.add("on");
-    UI.btnSign.disabled = false;
-    UI.btnConnect.textContent = state.wallet.provider === "phantom" ? "Connected" : "Demo Connected";
-    UI.btnConnect.disabled = true;
-  } else {
-    UI.walletAddr.textContent = "Not connected";
-    UI.statusDot.classList.remove("on");
-    UI.btnSign.disabled = true;
-    UI.btnConnect.textContent = "Connect Phantom";
-    UI.btnConnect.disabled = false;
-  }
-}
-
-/* --------------------------------- Wire -------------------------------- */
-
-UI.btnConnect.addEventListener("click", connectWallet);
-UI.btnSign.addEventListener("click", signMessage);
-
-UI.searchInput.addEventListener("input", () => renderPage());
+UI.btnConnectInline.addEventListener("click", () => {
+  // set dynamically in syncWalletUI, but safe to keep
+});
 
 UI.btnRefresh.addEventListener("click", () => {
   seedAll();
-  renderPage();
-  toast("Regenerated fake data");
+  render();
+  toast("Updated feed");
 });
 
-/* --------------------------------- Boot -------------------------------- */
+UI.searchInput.addEventListener("input", () => render());
+
+UI.tabsWrap.addEventListener("click", (e) => {
+  const btn = e.target.closest(".tab");
+  if (!btn) return;
+  const r = btn.getAttribute("data-route");
+  if (r !== "filtered" && r !== "verified") return;
+
+  state.view = r;
+  saveState();
+  renderHome();
+});
+
+UI.btnBack.addEventListener("click", () => {
+  location.hash = "#/";
+});
+
+/* ------------------------- Boot ------------------------- */
 
 (function boot() {
   loadState();
 
-  // seed if empty (first load)
   if (!state.filtered.items?.length || !state.verified.items?.length) {
     seedAll();
   }
 
-  state.route = parseRoute();
+  const r = parseRoute();
+  state.route = r.route;
+
+  // If Phantom is already connected, try to hydrate state
+  const provider = getPhantomProvider();
+  if (provider?.publicKey?.toString?.()) {
+    state.wallet.connected = true;
+    state.wallet.address = provider.publicKey.toString();
+  }
+
   syncWalletUI();
-  renderPage();
+  render();
   updateStats();
 
-  // update relative time labels
   setInterval(updateRelTimes, 1000);
+  setInterval(refreshBalance, 15_000);
 
-  // start streams
+  if (state.wallet.connected) refreshBalance();
+
   scheduleFilteredStream();
   scheduleVerifiedStream();
 })();
