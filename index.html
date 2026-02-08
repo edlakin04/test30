@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TrackedX — Rug Detection Prototype</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <meta name="theme-color" content="#070A12" />
+  </head>
+  <body>
+    <div class="bg-orb orb-1"></div>
+    <div class="bg-orb orb-2"></div>
+    <div class="bg-orb orb-3"></div>
+
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo">
+          <span class="logo-dot"></span>
+          <span class="logo-dot dim"></span>
+          <span class="logo-dot dim2"></span>
+        </div>
+        <div class="brand-text">
+          <div class="brand-name">TrackedX</div>
+          <div class="brand-sub">Rug Detection • Prototype</div>
+        </div>
+      </div>
+
+      <nav class="nav">
+        <a class="navlink" href="#/filtered">Filtered Developers</a>
+        <a class="navlink" href="#/verified">Verified Developers</a>
+        <a class="navlink" href="#/how">How it works</a>
+      </nav>
+
+      <div class="wallet-area">
+        <div class="wallet-pill" id="walletPill">
+          <div class="status-dot" id="statusDot"></div>
+          <div class="wallet-text">
+            <div class="wallet-label">Wallet</div>
+            <div class="wallet-addr" id="walletAddr">Not connected</div>
+          </div>
+        </div>
+
+        <button class="btn btn-ghost" id="btnConnect">Connect Phantom</button>
+        <button class="btn btn-primary" id="btnSign" disabled>Sign message</button>
+      </div>
+    </header>
+
+    <main class="shell">
+      <section class="hero">
+        <div class="hero-left">
+          <div class="kicker">Realtime detection feed</div>
+          <h1>
+            Spot rugs early.
+            <span class="grad">Track safer launches</span>
+            before they trend.
+          </h1>
+          <p class="muted">
+            TrackedX simulates a pipeline that filters suspicious deployments and only surfaces
+            tokens that pass progressive checks. Prototype data is randomly generated.
+          </p>
+
+          <div class="hero-stats">
+            <div class="stat">
+              <div class="stat-num" id="statFiltered">—</div>
+              <div class="stat-label">Filtered tokens shown</div>
+            </div>
+            <div class="stat">
+              <div class="stat-num" id="statHidden">—</div>
+              <div class="stat-label">Potential rugs blocked</div>
+            </div>
+            <div class="stat">
+              <div class="stat-num" id="statVerified">—</div>
+              <div class="stat-label">Verified devs</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="hero-right">
+          <div class="card glass">
+            <div class="card-head">
+              <div>
+                <div class="card-title">Pipeline</div>
+                <div class="card-sub">Stages before listing</div>
+              </div>
+              <div class="chip">LIVE</div>
+            </div>
+
+            <div class="pipeline">
+              <div class="stage">
+                <div class="stage-dot"></div>
+                <div class="stage-body">
+                  <div class="stage-title">Stage 1 — Deploy scan</div>
+                  <div class="stage-sub">Bytecode + metadata sanity checks</div>
+                </div>
+              </div>
+              <div class="stage">
+                <div class="stage-dot"></div>
+                <div class="stage-body">
+                  <div class="stage-title">Stage 2 — Liquidity review</div>
+                  <div class="stage-sub">LP locks, ownership, mint authority</div>
+                </div>
+              </div>
+              <div class="stage">
+                <div class="stage-dot"></div>
+                <div class="stage-body">
+                  <div class="stage-title">Stage 3 — Behavior watch</div>
+                  <div class="stage-sub">Early swaps, tax flags, wallet clustering</div>
+                </div>
+              </div>
+              <div class="stage">
+                <div class="stage-dot solid"></div>
+                <div class="stage-body">
+                  <div class="stage-title">Stage 4 — Listing</div>
+                  <div class="stage-sub">Only tokens that pass appear in feed</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="mini-row">
+              <div class="mini">
+                <div class="mini-label">Network</div>
+                <div class="mini-value">Solana</div>
+              </div>
+              <div class="mini">
+                <div class="mini-label">Mode</div>
+                <div class="mini-value">Dark</div>
+              </div>
+              <div class="mini">
+                <div class="mini-label">Data</div>
+                <div class="mini-value">Simulated</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page">
+        <div class="page-head">
+          <div class="page-title" id="pageTitle">Filtered Developers</div>
+          <div class="page-actions">
+            <div class="search">
+              <input id="searchInput" type="text" placeholder="Search symbol / name / dev…" />
+            </div>
+            <button class="btn btn-ghost" id="btnRefresh">Regenerate</button>
+          </div>
+        </div>
+
+        <div class="table card">
+          <div class="table-head">
+            <div class="th">Token</div>
+            <div class="th">Market Cap</div>
+            <div class="th">Liquidity</div>
+            <div class="th">24h Vol</div>
+            <div class="th">Txns</div>
+            <div class="th">Dev</div>
+            <div class="th">Listed</div>
+          </div>
+          <div class="table-body" id="listRoot"></div>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <div class="footer-left">
+          <div class="footer-brand">TrackedX</div>
+          <div class="muted">Prototype UI • Fake data • For layout/testing only</div>
+        </div>
+        <div class="footer-right muted">
+          Tip: deploy to Vercel as a static site.
+        </div>
+      </footer>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
