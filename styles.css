@@ -58,7 +58,7 @@ body{
   letter-spacing:-.6px;
   font-size:28px;
   line-height:1;
-  color: rgba(255,255,255,.95); /* white + modern */
+  color: rgba(255,255,255,.95);
 }
 .brand-sub{
   font-size:12px;
@@ -193,7 +193,7 @@ h1{
 
 .page{ margin-top: 22px; }
 .page-head{ display:flex; justify-content:center; margin-bottom:10px; }
-.page-title{ display:none; } /* You asked to keep layout clean; tabs will drive context */
+.page-title{ display:none; }
 
 .notice{
   display:flex;
@@ -381,6 +381,10 @@ h1{
   backdrop-filter: blur(12px);
   z-index: 100;
 }
+
+/* SAFETY: if hidden attr present, never render or flash */
+.modal-overlay[hidden]{ display:none !important; }
+
 .modal-card{
   width: min(520px, calc(100% - 28px));
   padding: 16px;
