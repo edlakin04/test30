@@ -1,13 +1,5 @@
-// LaunchDetect UI (updated)
-// - Title white (CSS)
-// - Removed right-side info block entirely
-// - Hero is centered
-// - Tabs are on the table (All / Filtered / Verified)
-// - No search or refresh
-// - Badges only: green "Verified ✓" or green "Filtered"
-// - Buy/Sell buttons; if not connected => modal with connect
-// - Inline notice disappears when wallet connected
-// - Phantom connect only (no demo)
+// LaunchDetect UI (modal fix)
+// The connect modal ONLY appears when Buy/Sell is clicked while wallet is not connected.
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -41,8 +33,6 @@ const UI = {
 };
 
 const STORAGE_KEY = "launchdetect_state_v3";
-
-// Change to devnet if you prefer:
 // const SOLANA_RPC = "https://api.devnet.solana.com";
 const SOLANA_RPC = "https://api.mainnet-beta.solana.com";
 
@@ -102,6 +92,22 @@ function relTimeFrom(tsMs) {
   return `${d}d ago`;
 }
 
+/* ------------------------- Modal ------------------------- */
+
+function ensureModalClosed() {
+  // Hard-close and guarantee hidden on any render/boot
+  UI.modalOverlay.hidden = true;
+}
+
+function openModal(message) {
+  UI.modalSub.textContent = message || "Connect your Phantom wallet to enable Buy/Sell actions.";
+  UI.modalOverlay.hidden = false;
+}
+
+function closeModal() {
+  UI.modalOverlay.hidden = true;
+}
+
 /* ------------------------- Wallet (Phantom) ------------------------- */
 
 function getPhantomProvider() {
@@ -131,7 +137,7 @@ async function connectWallet() {
     toast("Wallet connected");
 
     await refreshBalance();
-    closeModal();
+    closeModal(); // only closes if open (won't open on boot anymore)
   } catch {
     toast("Connection cancelled");
   }
@@ -204,19 +210,8 @@ function syncWalletUI() {
   UI.btnConnect.textContent = "Connected";
   UI.btnConnect.onclick = disconnectWallet;
 
-  // Requirement: once connected, the inline message disappears entirely
+  // Requirement: once connected, inline message disappears entirely
   UI.tradeNotice.hidden = true;
-}
-
-/* ------------------------- Modal ------------------------- */
-
-function openModal(message) {
-  UI.modalSub.textContent = message || "Connect your Phantom wallet to enable Buy/Sell actions.";
-  UI.modalOverlay.hidden = false;
-}
-
-function closeModal() {
-  UI.modalOverlay.hidden = true;
 }
 
 /* ------------------------- Routing ------------------------- */
@@ -228,6 +223,8 @@ function parseRoute() {
 }
 
 function renderRoute() {
+  ensureModalClosed(); // IMPORTANT: never show modal on navigation or load
+
   if (state.route === "how") {
     UI.homePage.hidden = true;
     UI.howRoot.hidden = false;
@@ -303,7 +300,7 @@ function genToken({ ageMode = "mixed", type = "filtered" } = {}) {
 
   return {
     id: cryptoRandomId(),
-    type, // "filtered" | "verified"
+    type, // filtered | verified
     symbol: makeSymbol(),
     name: makeMemeName(),
     marketCap: cap,
@@ -357,13 +354,11 @@ function saveState() {
 /* ------------------------- Rendering ------------------------- */
 
 function badgeHtml(type) {
-  // Only green badges, per requirement
   if (type === "verified") return `<span class="badge">Verified ✓</span>`;
   return `<span class="badge">Filtered</span>`;
 }
 
 function trackLink(item) {
-  // placeholder link; wire to real page later
   const href = `#/?token=${encodeURIComponent(item.contract)}`;
   return `<a class="track-link" href="${href}" title="Track coin data">Track coin data</a>`;
 }
@@ -399,7 +394,6 @@ function rowHtml(item) {
 }
 
 function getAllItemsSorted() {
-  // Merge streams; newest first
   const merged = [...state.filtered.items, ...state.verified.items];
   merged.sort((a, b) => b.listedAt - a.listedAt);
   return merged;
@@ -444,8 +438,7 @@ function updateRelTimes() {
 }
 
 function updateStats() {
-  const shown = datasetForView().length;
-  UI.statShown.textContent = shown.toLocaleString();
+  UI.statShown.textContent = datasetForView().length.toLocaleString();
   UI.statHidden.textContent = state.filtered.hiddenCount.toLocaleString();
   UI.statVerified.textContent = state.verified.items.length.toLocaleString();
 }
@@ -476,7 +469,6 @@ function scheduleFilteredStream() {
   const loop = () => {
     const delay = randInt(1800, 5200);
     setTimeout(() => {
-      // blocked rugs increment (not displayed)
       if (Math.random() < 0.22) {
         state.filtered.hiddenCount += 1;
         updateStats();
@@ -539,7 +531,7 @@ UI.modalConnect.addEventListener("click", connectWallet);
 
 UI.btnConnectInline.addEventListener("click", connectWallet);
 
-// Buy/Sell click delegation
+// Buy/Sell click delegation: ONLY opens modal here
 UI.listRoot.addEventListener("click", (e) => {
   const btn = e.target.closest(".action-btn");
   if (!btn) return;
@@ -557,7 +549,6 @@ UI.listRoot.addEventListener("click", (e) => {
     return;
   }
 
-  // connected behavior (placeholder)
   toast(`${action.toUpperCase()} ${item.symbol} — coming soon`);
 });
 
@@ -565,6 +556,9 @@ UI.listRoot.addEventListener("click", (e) => {
 
 (function boot() {
   loadState();
+
+  // Guarantee modal never shows on initial load
+  ensureModalClosed();
 
   state.route = parseRoute();
   window.addEventListener("hashchange", () => {
@@ -598,5 +592,5 @@ UI.listRoot.addEventListener("click", (e) => {
 })();
 
 UI.btnConnect.addEventListener("click", () => {
-  // actual handler is assigned in syncWalletUI
+  // handler assigned in syncWalletUI
 });
