@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="./styles.css" />
     <meta name="theme-color" content="#070A12" />
   </head>
+
   <body>
     <div class="bg-orb orb-1"></div>
     <div class="bg-orb orb-2"></div>
@@ -33,18 +34,16 @@
 
     <main class="shell">
       <section class="hero">
-        <div class="hero-left">
-          <div class="kicker">Live detection feed</div>
-
+        <div class="hero-center">
           <h1>
             Spot rugs early.
             <span class="grad">Track safer launches</span>
             before they trend.
           </h1>
 
-          <p class="muted">
+          <p class="muted hero-desc">
             LaunchDetect monitors new launches, filters high-risk deployments, and surfaces tokens that pass checks.
-            Want to know how it works? Click below.
+            If you want to know how it works, click here.
           </p>
 
           <div class="hero-actions">
@@ -53,8 +52,8 @@
 
           <div class="hero-stats">
             <div class="stat">
-              <div class="stat-num" id="statFiltered">—</div>
-              <div class="stat-label">Filtered tokens shown</div>
+              <div class="stat-num" id="statShown">—</div>
+              <div class="stat-label">Tokens shown</div>
             </div>
             <div class="stat">
               <div class="stat-num" id="statHidden">—</div>
@@ -66,67 +65,32 @@
             </div>
           </div>
         </div>
-
-        <div class="hero-right">
-          <div class="card glass hero-card">
-            <div class="hero-card-top">
-              <div class="hero-card-title">Realtime listings</div>
-              <div class="hero-card-sub">New tokens stream in continuously</div>
-            </div>
-
-            <div class="hero-card-grid">
-              <div class="mini">
-                <div class="mini-label">Fresh launches</div>
-                <div class="mini-value" id="miniFresh">High</div>
-              </div>
-              <div class="mini">
-                <div class="mini-label">Risk filters</div>
-                <div class="mini-value" id="miniFilters">Active</div>
-              </div>
-              <div class="mini">
-                <div class="mini-label">Developer index</div>
-                <div class="mini-value" id="miniDevIndex">Live</div>
-              </div>
-            </div>
-
-            <div class="divider"></div>
-
-            <div class="muted hero-card-note">
-              Use the tabs below to switch between filtered tokens and verified developers.
-            </div>
-          </div>
-        </div>
       </section>
 
-      <section class="page">
+      <section class="page" id="homePage">
         <div class="page-head">
-          <div class="page-head-left">
-            <div class="page-title" id="pageTitle">Filtered Developers</div>
-            <div class="tabs" id="tabs">
-              <button class="tab active" data-route="filtered">Filtered Developers</button>
-              <button class="tab" data-route="verified">Verified Developers</button>
-            </div>
-          </div>
-
-          <div class="page-actions">
-            <div class="search">
-              <input id="searchInput" type="text" placeholder="Search symbol / name / dev…" />
-            </div>
-            <button class="btn btn-ghost" id="btnRefresh">Refresh</button>
-          </div>
+          <div class="page-title" id="pageTitle">All</div>
         </div>
 
         <div class="notice card" id="tradeNotice" hidden>
           <div class="notice-left">
             <div class="notice-title">Connect wallet to trade</div>
             <div class="notice-sub muted">
-              Connect your Phantom wallet to view trading actions and track launches from your account.
+              Connect your Phantom wallet to enable Buy/Sell actions.
             </div>
           </div>
           <button class="btn btn-primary btn-sm" id="btnConnectInline">Connect Wallet</button>
         </div>
 
         <div class="table card">
+          <div class="table-top">
+            <div class="tabs" id="tabs">
+              <button class="tab active" data-view="all">All</button>
+              <button class="tab" data-view="filtered">Filtered Developers</button>
+              <button class="tab" data-view="verified">Verified Developers</button>
+            </div>
+          </div>
+
           <div class="table-head" id="tableHead">
             <div class="th">Token</div>
             <div class="th">Market Cap</div>
@@ -135,8 +99,10 @@
             <div class="th">Txns</div>
             <div class="th">Dev</div>
             <div class="th">Listed</div>
+            <div class="th">Actions</div>
             <div class="th">Link</div>
           </div>
+
           <div class="table-body" id="listRoot"></div>
         </div>
       </section>
@@ -145,8 +111,8 @@
         <div class="how-inner">
           <div class="how-title">How it works</div>
           <p class="muted how-text">
-            LaunchDetect continuously monitors new token launches, applies risk filters, and highlights tokens and
-            developers that pass checks. Verified developers are indexed separately and update more slowly.
+            LaunchDetect monitors new launches, applies filters to remove high-risk deployments, and indexes developers.
+            Tokens shown are already filtered. Verified developers are tracked separately and update more slowly.
           </p>
 
           <button class="btn btn-ghost" id="btnBack">← Back</button>
@@ -159,10 +125,25 @@
           <div class="muted">Launch monitoring and rug detection</div>
         </div>
         <div class="footer-right muted">
-          Powered by wallet connection + live feed UI
+          Wallet connection + live feed UI
         </div>
       </footer>
     </main>
+
+    <!-- Modal (Buy/Sell when not connected) -->
+    <div class="modal-overlay" id="modalOverlay" hidden>
+      <div class="modal-card card glass" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal-title" id="modalTitle">Connect wallet to trade</div>
+        <div class="modal-sub muted" id="modalSub">
+          Connect your Phantom wallet to enable Buy/Sell actions.
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn btn-primary" id="modalConnect">Connect Wallet</button>
+          <button class="btn btn-ghost" id="modalClose">Cancel</button>
+        </div>
+      </div>
+    </div>
 
     <div class="toast" id="toast"></div>
 
